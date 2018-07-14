@@ -7,6 +7,12 @@ contract LDHToken {
 	uint256 public totalSupply; 
 	mapping (address => uint256) public balanceOf; 
 	
+	event Transfer (
+		address indexed _from,
+		address indexed _to,
+		uint256 _value
+	);
+	
 	constructor(uint256 _initialSupply) public {
 		balanceOf[msg.sender] = _initialSupply;
 		totalSupply = _initialSupply;
@@ -15,9 +21,12 @@ contract LDHToken {
 	function transfer(address _to, uint256 _value) public returns(bool result) {
 		//check if balance is enough to send.
 		require(balanceOf[msg.sender] >= _value);
-		//return a boolean
-
-		//trnsfer event
+		//transfer balance 
+		balanceOf[msg.sender] -= _value; //must remember to deduct from sender!!!
+		balanceOf[_to] += _value;
+		//transfer event
+		Transfer(msg.sender, _to, _value);
+		return true;
 	}
 	
 }
