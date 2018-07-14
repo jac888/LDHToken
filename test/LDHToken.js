@@ -3,6 +3,7 @@ var LDHToken = artifacts.require('./LDHToken.sol');
 contract('LDHToken', function(accounts){ //can use one var using @ mutiple tests for contract
 	var LDHTokenTotalSupply = 1000000;
 	var testTransferAmount  = 25000;
+	var delegateAmount = 200;
 	var TokenInstance;
 
 	it('Checking contact name with correct value', function () {
@@ -68,4 +69,68 @@ contract('LDHToken', function(accounts){ //can use one var using @ mutiple tests
 		}); 
 	})
 
+	it('approve tokens for delegated transfer on account one for ' + delegateAmount.toString() + ' tokens', () => {
+		return LDHToken.deployed().then((instance) => {
+			TokenInstance = instance;
+			return TokenInstance.approve.call(accounts[1],delegateAmount);
+		}).then((res)=>{
+			assert.equal(res,true,'approved!');
+			return TokenInstance.approve(accounts[1],delegateAmount, {from: accounts[0]});
+		}).then(receipt => {
+			assert.equal(receipt.logs.length,1,'got event length!');
+			assert.equal(receipt.logs[0].event,'Approval','should be the "Approval" event');
+			assert.equal(receipt.logs[0].args._owner, accounts[0], 'should be the "Approval" event authorized by');
+			assert.equal(receipt.logs[0].args._spender, accounts[1], 'should be the "Approval" event authorized to');
+			assert.equal(receipt.logs[0].args._value, delegateAmount, `transfer amount not matching ${delegateAmount}`);
+			return TokenInstance.allowance(accounts[0],accounts[1]);
+		}).then(allowance => {
+			assert.equal(allowance.toNumber(),delegateAmount,'not matching allowance because value is : ' + allowance.toString());
+		});
+	})
+
+	it('handles delegated transfer', () => {
+		return LDHToken.deployed().then(instance => {
+			TokenInstance = instance;
+			fromAccount = accounts[2];
+			toAccount = accounts[3];
+			spendingAccount = accounts[4];
+			//transfer some token to fromAccount
+			return TokenInstance.transfer(fromAccount,100, { from: accounts[0]});
+		}).then(receipt => {		
+			return TokenInstance.approve(spendingAccount, 10, { from: fromAccount})
+		}).then(receipt => {
+			return TokenInstance.transferFrom(fromAccount, toAccount, 9999 ,{ from: spendingAccount});
+		}).then(assert.fail).catch(error => {
+			//console.log(`error msg is : ${error.message}`);
+			assert(error.message.indexOf("revert") >= 0, 'exceeding acount balances!');
+			return TokenInstance.transferFrom(fromAccount, toAccount, 20, { from : spendingAccount})
+		}).then(assert.fail).catch(error => {
+			//console.log(`error msg is : ${error.message}`);
+			assert(error.message.indexOf("revert") >= 0, 'exceeding acount approved balances!');
+			return TokenInstance.allowance(fromAccount,spendingAccount);
+		}).then(allowance => {
+			console.log("allowance one is : " + allowance.toNumber());
+			return TokenInstance.allowance(spendingAccount,fromAccount);
+		}).then(allowance => {
+			//console.log("allowance two is : " + allowance.toNumber());
+			return TokenInstance.transferFrom.call(fromAccount,toAccount,10,{from: spendingAccount});
+		}).then(success => {
+			assert(success,true);
+			return TokenInstance.transferFrom(fromAccount,toAccount,10,{from: spendingAccount});
+		}).then(receipt => {
+			assert.equal(receipt.logs.length,1,'triggers event length!');
+			assert.equal(receipt.logs[0].event,'Transfer','should be the "Transfer" event');
+			assert.equal(receipt.logs[0].args._from, fromAccount, 'should be the "Transfer" event authorized by');
+			assert.equal(receipt.logs[0].args._to, toAccount, 'should be the "Transfer" event authorized to');
+			assert.equal(receipt.logs[0].args._value, 10, `Transfer amount not matching ${10}`);
+			return TokenInstance.balanceOf(fromAccount);
+		}).then(balance => {
+			console.log(`fromaccount balance now : ${balance}`);
+			assert.equal(balance.toNumber(),90,'deduct 10 to fromAccount');
+			return TokenInstance.balanceOf(toAccount);
+		}).then(balance => {
+			console.log(`toaccount balance now : ${balance}`);
+			assert.equal(balance.toNumber(),10,'added 10 to toAccount');
+		});
+	})
 });
